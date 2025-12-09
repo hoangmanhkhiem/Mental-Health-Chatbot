@@ -21,7 +21,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # NEW: Knowledge Base Loader Service
+  # Knowledge Base Loader (Legacy)
   kb-loader:
     image: python:3.11-slim
     container_name: awe_kb_loader
@@ -41,7 +41,32 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    profiles:
+      - legacy-loader
 
+  # NEW: Enhanced Knowledge Base Loader
+  # Features: Semantic Chunking, Context-Enriched Embeddings, Summaries, Vietnamese Processing
+  kb-loader-enhanced:
+    image: python:3.11-slim
+    container_name: awe_kb_loader_enhanced
+    working_dir: /app
+    volumes:
+      - ./backend:/app/backend
+      - ./knowledge_base:/app/knowledge_base
+    environment:
+      DATABASE_URL: postgresql+psycopg2://chatbot_user:chatbot_pass@postgres:5432/therapy_chatbot?sslmode=disable
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      PYTHONUNBUFFERED: 1
+    command: >
+      sh -c "
+      pip install --no-cache-dir psycopg2-binary google-generativeai PyPDF2 &&
+      python3 backend/load_kb_enhanced.py
+      "
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Legacy Backend API (original)
   backend:
     build:
       context: ./backend
@@ -65,6 +90,37 @@ services:
       - ./knowledge_base:/app/knowledge_base
     command: uvicorn server:app --host 0.0.0.0 --port 8001 --reload
 
+  # NEW: Enhanced Backend API (8 Layers)
+  backend-enhanced:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fastapi_chatbot_enhanced
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://chatbot_user:chatbot_pass@postgres:5432/therapy_chatbot?sslmode=disable
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - TWILIO_WHATSAPP_NUMBER=${TWILIO_WHATSAPP_NUMBER}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - CORS_ORIGINS=*
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - ./knowledge_base:/app/knowledge_base
+    command: uvicorn server_enhanced:app --host 0.0.0.0 --port 8002 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Legacy Telegram Bot (original)
   telegram:
     build:
       context: ./backend
@@ -82,6 +138,59 @@ services:
       - ./backend:/app
       - ./knowledge_base:/app/knowledge_base
     command: python3 telegram_server.py
+    profiles:
+      - legacy
+
+  # NEW: Enhanced Telegram Bot (8 Layers)
+  telegram-enhanced:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: telegram_bot_enhanced
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://chatbot_user:chatbot_pass@postgres:5432/therapy_chatbot?sslmode=disable
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - ./knowledge_base:/app/knowledge_base
+    command: python3 telegram_enhanced.py
+    restart: unless-stopped
+
+  # NEW: Telegram Webhook Server (Production)
+  telegram-webhook:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: telegram_webhook_enhanced
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://chatbot_user:chatbot_pass@postgres:5432/therapy_chatbot?sslmode=disable
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - WEBHOOK_URL=${WEBHOOK_URL:-}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
+      - PORT=8003
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8003:8003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - ./knowledge_base:/app/knowledge_base
+    command: python3 telegram_webhook_enhanced.py
+    profiles:
+      - webhook
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   postgres_data:

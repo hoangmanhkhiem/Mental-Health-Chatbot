@@ -60,7 +60,7 @@ curl -X POST "http://localhost:8001/api/test-message?message=I%20need%20help%20w
 - `GET /api/health` - Health check
 - `GET /api/status` - System status and statistics  
 - `POST /api/whatsapp` - Twilio webhook
-- `POST /api/test-message` - Test endpoint
+- `POST  ` - Test endpoint
 
 ## 📚 Knowledge Base
 
